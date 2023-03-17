@@ -155,7 +155,7 @@ AS (
             WHERE act_date >= dateadd(dd, - 1, getdate())
             GROUP BY material
             ) b ON a.material = b.material
-        -- WHERE MS = '01' AND DIVISION = 'C2'
+        WHERE MS = '01' AND DIVISION = 'C2'
         ) T3
     LEFT JOIN Tpoasn T5 ON T3.material = T5.material -- poasn_qty
         AND T2.pl_plant = T5.plant AND T1.TheDate = T5.act_date
@@ -214,7 +214,7 @@ timelist.append([end-start, "Get full table from SQL server"])
 # define location
 start = time.time()
 # file_loc = r'C:\Users\KISS Admin\Desktop\IVYENT_DH\P6. DailyDM except codes'
-file_loc = r'C:\Users\Public\Data\ESA\P6. DailyDM except codes'
+file_loc = r'C:\Users\Public\Data\ESA\P6. DailyDM except codes'  
 
 # group by mtrl & TheDate
 
@@ -371,6 +371,10 @@ end = time.time()
 timelist.append([end-start, "caluculate Daily and to_csv result"])
 
 # %%
+df_mtrl= pd.read_sql("""SELECT material, ms, pdt FROM [ivy.mm.dim.mtrl]""", con=engine)
+df_mtrl.head()
+
+# %%
 # group by mtrl and BOseq to show summary data of BOdates and BOqty,BO$
 # plot the BOdates, save the summary csv and png file
 start = time.time()
@@ -399,6 +403,20 @@ df_result1 = df_result1[['mtrl', 'BOseq', 'StartDate', 'EndDate',
 df_result1 = df_result1[df_result.BOseq != 0].copy()
 result_loc = file_loc+"\\"+today+"_"+targetPlant+"_BO.csv"
 
+# add ms , pdt to df_result1 from df_mtrl
+df_result1=df_result1.merge(df_mtrl, how='left', left_on='mtrl',right_on='material')
+df_result1.drop("material", axis=1, inplace=True)
+
+df_result1['pdt']=df_result1.apply(lambda row: 90 if \
+    (row.pdt<90)&(row.ms in {'01','91','41'}) else row.pdt, axis=1)
+
+df_result1['bo_bf_pdt'] =df_result1.apply(lambda row: "yes" if (todays.date() \
+    + timedelta(days=row['pdt'])) > row['StartDate'].date() else "no", axis=1)
+df_result1['#BOdays_bf_pdt']=df_result1.apply(lambda row: 
+max(   ((todays.date() + timedelta(days=row['pdt'])) - row['StartDate'].date()).days   ,0)
+, axis=1)    
+
+df_result1=df_result1.rename(columns ={'pdt':'adj. pdt'})
 df_result1['loc']='total'
 df_result1.to_csv(result_loc, index=False)
 end = time.time()

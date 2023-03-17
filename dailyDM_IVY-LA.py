@@ -187,8 +187,10 @@ SELECT pl_plant AS plant, TheDate, material AS mtrl, nsp, avgDbo, poasn_qty, avg
                 avgDreorder + avgDbo ELSE fcstPerWDs END AS fcstD, thisMthReOdqty
 FROM TOTAL2
 ORDER BY plant, mtrl, TheDate
+
 """, con=engine)
 print("full table is ready")
+#%%
 
 df_wds = pd.read_sql("""
 DECLARE @mthwitdh AS INT
@@ -358,7 +360,6 @@ validate_loc = file_loc+"\\"+today+"_"+targetPlant+"_4validate.csv"
 df_total[['mtrl', 'TheDate', 'nsp', 'avgDbo', 'poasn_qty', 'avgDreorder', 'On_hand_qty', 'fcstD',
              "BOseq", "residue", "BOqty", "BO$", 'thisMthReOdqty', 'WDs', 'accumWDs']].to_csv(validate_loc, index=False)
 
-
 # select to columns for export
 df_total = df_total[['mtrl', 'TheDate', 'On_hand_qty',
                      'residue', 'fcstD',  'BOqty', 'BO$', 'BOseq']].copy()
@@ -370,6 +371,10 @@ print('exporting TotalESA.csv was done')
 
 end = time.time()
 timelist.append([end-start, "caluculate Daily and to_csv result"])
+
+# %%
+df_mtrl= pd.read_sql("""SELECT material, ms, pdt FROM [ivy.mm.dim.mtrl]""", con=engine)
+df_mtrl.head()
 
 # %%
 # group by mtrl and BOseq to show summary data of BOdates and BOqty,BO$
@@ -400,6 +405,20 @@ df_result1 = df_result1[['mtrl', 'BOseq', 'StartDate', 'EndDate',
 df_result1 = df_result1[df_result.BOseq != 0].copy()
 result_loc = file_loc+"\\"+today+"_"+targetPlant+"_BO.csv"
 
+# add ms , pdt to df_result1 from df_mtrl
+df_result1=df_result1.merge(df_mtrl, how='left', left_on='mtrl',right_on='material')
+df_result1.drop("material", axis=1, inplace=True)
+
+df_result1['pdt']=df_result1.apply(lambda row: 90 if \
+    (row.pdt<90)&(row.ms in {'01','91','41'}) else row.pdt, axis=1)
+
+df_result1['bo_bf_pdt'] =df_result1.apply(lambda row: "yes" if (todays.date() \
+    + timedelta(days=row['pdt'])) > row['StartDate'].date() else "no", axis=1)
+df_result1['#BOdays_bf_pdt']=df_result1.apply(lambda row: 
+max(   ((todays.date() + timedelta(days=row['pdt'])) - row['StartDate'].date()).days   ,0)
+, axis=1)    
+
+df_result1=df_result1.rename(columns ={'pdt':'adj. pdt'})
 df_result1['loc']='LA'
 df_result1.to_csv(result_loc, index=False)
 end = time.time()
