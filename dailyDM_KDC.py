@@ -35,7 +35,7 @@ start = time.time()
 
 import json
 
-with open('data.json', 'r') as f:
+with open(r'C:\Users\KISS Admin\Desktop\IVYENT_DH\data.json', 'r') as f:
     data = json.load(f)
 
 # get ID passwords from json
@@ -143,19 +143,36 @@ AS (
         SELECT a.MATERIAL, nsp --material
         FROM [ivy.mm.dim.mtrl] a
         INNER JOIN (
-            SELECT material
-            FROM [ivy.sd.fact.bill_ppp]
-            WHERE act_date >= dateadd(mm, - 12, dateadd(dd, - 1, getdate())) AND qty > 0
-            GROUP BY material
-            
-            UNION
-            
-            SELECT material
-            FROM [ivy.mm.dim.factfcst]
-            WHERE act_date >= dateadd(dd, - 1, getdate())
-            GROUP BY material
+            SELECT T2.material
+            FROM (
+                SELECT material
+                FROM [ivy.mm.dim.mrp01]
+                WHERE total_stock > 0
+                GROUP BY material
+
+                UNION
+
+                SELECT material
+                FROM [ivy.mm.dim.fact_poasn]
+                WHERE act_date >= dateadd(dd, - 1, getdate()) AND left(po_num, 2) <> '43'
+                GROUP BY material
+            ) AS T2
+            INNER JOIN (
+                SELECT material
+                FROM [ivy.sd.fact.bill_ppp]
+                WHERE act_date >= dateadd(mm, - 12, dateadd(dd, - 1, getdate())) AND qty > 0
+                GROUP BY material
+
+                UNION
+
+                SELECT material
+                FROM [ivy.mm.dim.factfcst]
+                WHERE act_date >= dateadd(dd, - 1, getdate())
+                GROUP BY material
+            ) AS T1 ON T1.material = T2.material
+            GROUP BY T2.material
             ) b ON a.material = b.material
-        -- WHERE MS = '01' AND DIVISION = 'C2'
+        --WHERE MS = '01' AND DIVISION = 'C2'
         ) T3
     LEFT JOIN Tpoasn T5 ON T3.material = T5.material -- poasn_qty
         AND T2.pl_plant = T5.plant AND T1.TheDate = T5.act_date
@@ -272,9 +289,10 @@ def DailyCalculate(df):
         curResidue = df[index_mtrl*len(df_date)][6]
         # check if there is no poasn for this mtrl
         # poasn_test = df.loc[df["mtrl"] == df.loc[index_mtrl *len(df_date), "mtrl"], "poasn_qty"].sum() == 0
-        poasn_test = df[df[:, 0] ==
-                        df[index_mtrl * len(df_date), 0], 4].sum() == 0
-        if (curResidue == 0 & poasn_test):  # if no inventory and poasn => set residue:0 and BOseq:-1
+        df[index_mtrl*len(df_date):(index_mtrl+1) * len(df_date), 4].sum() ==0
+
+        poasn_test = df[index_mtrl*len(df_date):(index_mtrl+1) * len(df_date), 4].sum() ==0
+        if ((curResidue == 0) & poasn_test):  # if no inventory and poasn => set residue:0 and BOseq:-1
             # df.loc[index_mtrl*len(df_date):(index_mtrl+1) *	len(df_date)-1, "residue"] = 0
             df[index_mtrl*len(df_date):(index_mtrl+1) * len(df_date), 9] = 0
             # df.loc[index_mtrl*len(df_date):(index_mtrl+1) * len(df_date)-1, "BOseq"] = -1
@@ -376,6 +394,12 @@ timelist.append([end-start, "caluculate Daily and to_csv result"])
 df_mtrl= pd.read_sql("""SELECT material, ms, pdt FROM [ivy.mm.dim.mtrl]""", con=engine)
 df_mtrl.head()
 
+df_po = pd.read_sql("""SELECT material, act_date, sum(po_qty+asn_qty) as poasn_qty FROM [ivy.mm.dim.fact_poasn]
+WHERE plant in ('1100','1400','G110','G140','1000','G100')
+GROUP BY material, act_date
+""", con=engine)
+df_po.head()
+
 # %%
 # group by mtrl and BOseq to show summary data of BOdates and BOqty,BO$
 # plot the BOdates, save the summary csv and png file
@@ -414,9 +438,30 @@ df_result1['pdt']=df_result1.apply(lambda row: 90 if \
 
 df_result1['bo_bf_pdt'] =df_result1.apply(lambda row: "yes" if (todays.date() \
     + timedelta(days=row['pdt'])) > row['StartDate'].date() else "no", axis=1)
+
+row= df_result1.loc[1] # for degub  
+
+df_result1["po_date"]=''
+df_result1["poasn_qty"]=''
+
+# df_result1=df_result1.merge(df_first_po, how='left', left_on='mtrl',right_on='material').drop('material',axis=1)
+for index,row in df_result1.iterrows():
+    po_next_bo =df_po[(row.StartDate.date()<df_po.loc[:,"act_date"] ) & (row.mtrl == df_po.loc[:,"material"])]
+    po_next_bo =po_next_bo.reset_index().drop("index",axis=1)
+    if( len(po_next_bo) >0):
+        df_result1.loc[index,"po_date"]=po_next_bo.loc[0,"act_date"]
+        df_result1.loc[index,"poasn_qty"]=po_next_bo.loc[0,"poasn_qty"]
+
+
+# if bo bf po no -> days bf po :0
+# yes -> days bf po : if seq ==-1 -> 
+
 df_result1['#BOdays_bf_pdt']=df_result1.apply(lambda row: 
-max(   ((todays.date() + timedelta(days=row['pdt'])) - row['StartDate'].date()).days   ,0)
-, axis=1)    
+max( min(((todays.date() + timedelta(days=row['pdt'])) - row['StartDate'].date()).days+4 , 
+            row['#ofBOdays']),
+0), axis=1)    
+
+df_result1['#BOdays_bf_pdt'] =df_result1.apply(lambda row: 0 if row.bo_bf_pdt=="no" else row['#BOdays_bf_pdt'], axis=1)
 
 df_result1=df_result1.rename(columns ={'pdt':'adj. pdt'})
 df_result1['loc']='KDC'
@@ -481,11 +526,18 @@ for index in range(len(df_sumBOseq)):
             if lastday.fcstD == 0:
                 fcsts=df_total.loc[len_date*index:len_date*(index+1)-1,'fcstD']
                 # fcst = np.average(df_total.loc[(df_total.mtrl == df_sumBOseq[index][0]) & (df_total.fcstD > 0), "fcstD"].values)
+                if sum(fcsts>0)== 0:
+                    fcst=0
+                    deltaD=1000
                 fcst = np.average(fcsts[fcsts>0])
             else:  # it means lastday.fcstD>0
                 fcst = lastday.fcstD
             deltaD = lastday.residue/fcst
             if deltaD>1000:
+                deltaD=1000
+            elif pd.isnull(deltaD):
+                print(lastday)
+                print(fcst)
                 deltaD=1000
             bo = datetime.strptime(
                 lastday.TheDate, '%Y-%m-%d')+timedelta(days=deltaD)

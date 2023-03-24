@@ -19,7 +19,7 @@ start = time.time()
 
 import json
 
-with open('data.json', 'r') as f:
+with open(r'C:\Users\KISS Admin\Desktop\IVYENT_DH\data.json', 'r') as f:
     data = json.load(f)
 
 # ID와 비밀번호 가져오기
@@ -33,7 +33,6 @@ engine = create_engine(connection_url)
 print("Connection Established:")
 
 trusted_conn = 'no'
-
 conn = f'mssql://{username}:{password}@{server}/{database}?driver=SQL+Server&trusted_connection={trusted_conn}'
 
 end = time.time()
