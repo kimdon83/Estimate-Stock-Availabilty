@@ -106,14 +106,15 @@ AS (
     GROUP BY material, FORMAT(act_date, 'MMyyyy'), plant
     ), fcst
 AS (
-    SELECT T1.TheDate, T1.accumWDs, T1.MMYYYY, T1.IsKissHoliday, (1 - IsKissHoliday) * (CONVERT(FLOAT, T2.eship) / @3Mwds) AS fcstPerWDs, T2.plant, T2.material
+    SELECT T1.TheDate, T1.accumWDs, T1.MMYYYY, T1.IsKissHoliday, (1 - T3.IsKissHoliday) * (CONVERT(FLOAT, T2.eship) / T3.workdaysInMonth) AS fcstPerWDs, T2.plant, T2.material
     FROM (
         SELECT TheDate, workdaysInMonth AS WDs, workdaysInMonth - workdaysLeftInMonth AS accumWDs, MMYYYY, IsKissHoliday
         FROM [ivy.mm.dim.date]
         WHERE thedate BETWEEN DATEADD(DD, - DAY(GETDATE()), GETDATE()) AND DATEADD(MM, @mthwitdh + 1, DATEADD(DD, - DAY(GETDATE()), GETDATE()))
         ) T1
     LEFT JOIN T4fcst T2 ON T1.MMYYYY = T2.MMYYYY
-    WHERE thedate BETWEEN DATEADD(DAY, - 6, GETDATE()) AND DATEADD(MONTH, @mthwitdh, GETDATE())
+    LEFT JOIN [ivy.mm.dim.date] T3 on T1.TheDate=T3.TheDate
+    WHERE T1.thedate BETWEEN DATEADD(DAY, - 6, GETDATE()) AND DATEADD(MONTH, @mthwitdh, GETDATE())
     ), Tpoasn
 AS (
     SELECT material, plant, act_date, sum(po_qty) AS po_qty, sum(asn_qty) AS asn_qty
@@ -143,36 +144,19 @@ AS (
         SELECT a.MATERIAL, nsp --material
         FROM [ivy.mm.dim.mtrl] a
         INNER JOIN (
-            SELECT T2.material
-            FROM (
-                SELECT material
-                FROM [ivy.mm.dim.mrp01]
-                WHERE total_stock > 0
-                GROUP BY material
-
-                UNION
-
-                SELECT material
-                FROM [ivy.mm.dim.fact_poasn]
-                WHERE act_date >= dateadd(dd, - 1, getdate()) AND left(po_num, 2) <> '43'
-                GROUP BY material
-            ) AS T2
-            INNER JOIN (
-                SELECT material
-                FROM [ivy.sd.fact.bill_ppp]
-                WHERE act_date >= dateadd(mm, - 12, dateadd(dd, - 1, getdate())) AND qty > 0
-                GROUP BY material
-
-                UNION
-
-                SELECT material
-                FROM [ivy.mm.dim.factfcst]
-                WHERE act_date >= dateadd(dd, - 1, getdate())
-                GROUP BY material
-            ) AS T1 ON T1.material = T2.material
-            GROUP BY T2.material
+            SELECT material
+            FROM [ivy.sd.fact.bill_ppp]
+            WHERE act_date >= dateadd(mm, - 12, dateadd(dd, - 1, getdate())) AND qty > 0
+            GROUP BY material
+            
+            UNION
+            
+            SELECT material
+            FROM [ivy.mm.dim.factfcst]
+            WHERE act_date >= dateadd(dd, - 1, getdate())
+            GROUP BY material
             ) b ON a.material = b.material
---        WHERE MS = '01' AND DIVISION = 'C1'
+            --WHERE MS = '01' AND DIVISION = 'C1'
         ) T3
     LEFT JOIN Tpoasn T5 ON T3.material = T5.material -- poasn_qty
         AND T2.pl_plant = T5.plant AND T1.TheDate = T5.act_date
@@ -230,8 +214,8 @@ timelist.append([end-start, "Get full table from SQL server"])
 # %%
 # define location
 start = time.time()
-file_loc = r'C:\Users\KISS Admin\Desktop\IVYENT_DH\P6. DailyDM except codes'
-# file_loc = r'C:\Users\Public\Data\ESA\P6. DailyDM except codes'  
+# file_loc = r'C:\Users\KISS Admin\Desktop\IVYENT_DH\P6. DailyDM except codes'
+file_loc = r'C:\Users\Public\Data\ESA\P6. DailyDM except codes'  
 
 # group by mtrl & TheDate
 
@@ -462,7 +446,7 @@ df_result1['#BOdays_bf_pdt'] =df_result1.apply(lambda row: 0 if row.bo_bf_pdt=="
 
 df_result1=df_result1.rename(columns ={'pdt':'adj. pdt'})
 df_result1['loc']='total'
-df_result1.to_csv(result_loc, index=False)
+df_result1.loc[df_result1["BOseq"]!=-1].to_csv(result_loc, index=False)
 end = time.time()
 timelist.append([end-start, "caluculate BO.csv"])
 
