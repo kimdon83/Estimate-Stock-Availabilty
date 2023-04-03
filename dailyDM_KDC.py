@@ -155,6 +155,13 @@ AS (
             FROM [ivy.mm.dim.factfcst]
             WHERE act_date >= dateadd(dd, - 1, getdate())
             GROUP BY material
+
+            UNION
+
+            SELECT material
+            FROM [ivy.mm.dim.mrp01]
+            WHERE total_stock > 0
+            GROUP BY material
             ) b ON a.material = b.material
 --        WHERE MS = '01' AND DIVISION = 'C2'
         ) T3
@@ -538,7 +545,10 @@ df_sumBOseq.columns= colnames
 # %%
 BOdateloc = file_loc+"\\"+today+"_"+targetPlant+"_BOdate.csv"
 df_sumBOseq['loc']='KDC'
-df_sumBOseq[["mtrl", "StartDate", 'ox','loc']].to_csv(BOdateloc, index=False)
+df_sumBOseq['days_from_today']=(pd.to_datetime(df_sumBOseq['StartDate']) - datetime.now()).dt.days+1
+df_sumBOseq["DM"]=df_sumBOseq['days_from_today']/365.25*12
+
+df_sumBOseq[["mtrl", "StartDate",'DM', 'loc']].to_csv(BOdateloc, index=False)
 
 total_loc = file_loc+"\\"+today+"_"+targetPlant+"_ESA.csv"
 df_total = df_total[['mtrl', 'TheDate', 'On_hand_qty',
@@ -558,4 +568,5 @@ df_time.sort_values("time", ascending=False, inplace=True)
 # df_time["time"]=df_time["time"].apply(lambda x : f'{x:.2f}')
 df_time = df_time[["desc", "time", "ratio"]]
 print(df_time)
+# %%
 # %%

@@ -148,15 +148,22 @@ AS (
             FROM [ivy.sd.fact.bill_ppp]
             WHERE act_date >= dateadd(mm, - 12, dateadd(dd, - 1, getdate())) AND qty > 0
             GROUP BY material
-            
+
             UNION
-            
+
             SELECT material
             FROM [ivy.mm.dim.factfcst]
             WHERE act_date >= dateadd(dd, - 1, getdate())
             GROUP BY material
+
+            UNION
+
+            SELECT material
+            FROM [ivy.mm.dim.mrp01]
+            WHERE total_stock > 0
+            GROUP BY material
             ) b ON a.material = b.material
-            --WHERE MS = '01' AND DIVISION = 'C1'
+--            WHERE MS = '01' AND DIVISION = 'C1'
         ) T3
     LEFT JOIN Tpoasn T5 ON T3.material = T5.material -- poasn_qty
         AND T2.pl_plant = T5.plant AND T1.TheDate = T5.act_date
@@ -535,7 +542,11 @@ df_sumBOseq.columns= colnames
 # %%
 BOdateloc = file_loc+"\\"+today+"_"+targetPlant+"_BOdate.csv"
 df_sumBOseq['loc']='total'
-df_sumBOseq[["mtrl", "StartDate", 'ox','loc']].to_csv(BOdateloc, index=False)
+
+df_sumBOseq['days_from_today']=(pd.to_datetime(df_sumBOseq['StartDate']) - datetime.now()).dt.days+1
+df_sumBOseq["DM"]=df_sumBOseq['days_from_today']/365.25*12
+
+df_sumBOseq[["mtrl", "StartDate",'DM', 'loc']].to_csv(BOdateloc, index=False)
 
 total_loc = file_loc+"\\"+today+"_"+targetPlant+"_ESA.csv"
 df_total = df_total[['mtrl', 'TheDate', 'On_hand_qty',
