@@ -438,7 +438,7 @@ df_result1["poasn_qty"]=''
 # df_result1=df_result1.merge(df_first_po, how='left', left_on='mtrl',right_on='material').drop('material',axis=1)
 for index,row in df_result1.iterrows():
     po_next_bo =df_po[(row.StartDate.date()<df_po.loc[:,"act_date"] ) & (row.mtrl == df_po.loc[:,"material"])]
-    po_next_bo =po_next_bo.reset_index().drop("index",axis=1)
+    po_next_bo =po_next_bo.sort_values('act_date').reset_index().drop("index",axis=1)
     if( len(po_next_bo) >0):
         df_result1.loc[index,"po_date"]=po_next_bo.loc[0,"act_date"]
         df_result1.loc[index,"poasn_qty"]=po_next_bo.loc[0,"poasn_qty"]
