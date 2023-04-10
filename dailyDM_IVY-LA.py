@@ -455,7 +455,7 @@ df_result1['#BOdays_bf_pdt'] =df_result1.apply(lambda row: 0 if row.bo_bf_pdt=="
 
 df_result1=df_result1.rename(columns ={'pdt':'adj. pdt'})
 df_result1['loc']='LA'
-df_result1.loc[df_result1["BOseq"]!=-1].to_csv(result_loc, index=False)
+df_result1.loc[df_result1["BOqty"]>0].to_csv(result_loc, index=False)
 end = time.time()
 timelist.append([end-start, "caluculate BO.csv"])
 
